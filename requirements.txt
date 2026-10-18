@@ -1,0 +1,2 @@
+yfinance==1.7.0
+tzdata>=2024.1
