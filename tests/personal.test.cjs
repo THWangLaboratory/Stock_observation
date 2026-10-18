@@ -1,0 +1,15 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const core=require('../personal-core.js');
+const record={note:'關注產業變化',lower:400,upper:500,updatedAt:'2026-10-18T12:00:00Z'};
+const quote={price:400,tradeDate:'2026-10-16',state:'ready'};
+test('lower condition includes equality',()=>assert.equal(core.checkCondition(quote,record,'2026-10-16').hits[0].type,'lower'));
+test('upper condition includes equality',()=>assert.equal(core.checkCondition({...quote,price:500},record,'2026-10-16').hits[0].type,'upper'));
+test('price between bounds waits',()=>assert.equal(core.checkCondition({...quote,price:450},record,'2026-10-16').status,'waiting'));
+test('no quote does not trigger',()=>assert.equal(core.checkCondition({...quote,price:null},record,'2026-10-16').status,'unavailable'));
+test('cached or older quote does not trigger',()=>{assert.equal(core.checkCondition({...quote,state:'cached'},record,'2026-10-16').status,'stale');assert.equal(core.checkCondition(quote,record,'2026-10-19').status,'stale');});
+test('cleared conditions stay inactive',()=>assert.equal(core.checkCondition(quote,{...record,lower:null,upper:null},'2026-10-16').status,'none'));
+test('invalid and inverted bounds are rejected',()=>{for(const lower of [-1,0,NaN,Infinity,'400'])assert.throws(()=>core.validateRecord({...record,lower}));assert.throws(()=>core.validateRecord({...record,lower:500}));});
+test('backup roundtrip preserves notes, empty lists and deduplicates watchlists',()=>{const backup={format:'stockroom-personal',version:1,watchlist:['2408','2408'],records:{2408:record}};assert.deepEqual(core.validateBackup(JSON.parse(JSON.stringify(backup))).watchlist,['2408']);assert.deepEqual(core.validateBackup({...backup,watchlist:[]}).watchlist,[]);assert.deepEqual(core.validateBackup(backup).records['2408'],record);});
+test('unknown stock records retained for future catalog expansion',()=>{const b=core.validateBackup({format:'stockroom-personal',version:1,watchlist:['9999'],records:{9999:record}});assert.equal(b.records['9999'].note,record.note);});
+test('wrong format, unsupported version, oversized notes and malicious keys rejected',()=>{assert.throws(()=>core.validateBackup({}));assert.throws(()=>core.validateBackup({format:'stockroom-personal',version:2}));assert.throws(()=>core.validateRecord({...record,note:'x'.repeat(4001)}));const bad=JSON.parse('{"format":"stockroom-personal","version":1,"watchlist":[],"records":{"__proto__":{}}}');assert.throws(()=>core.validateBackup(bad));assert.equal({}.polluted,undefined);});
